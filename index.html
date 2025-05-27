@@ -111,22 +111,28 @@
       localStorage.setItem('scannedCodes', JSON.stringify([...scannedSet]));
     }
 
-    function sendToGoogleSheet(data) {
-      fetch('https://script.google.com/macros/s/AKfycbw0DOk203_Jzk5tYA8iCs5MNQlnLTbrsppy7PH2V2gmTZJgenAMzMAvZRYvBRErhNGJBg/exec', {
-        method: 'POST',
-        mode: 'no-cors', // <--- prevent CORS error
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ code: data, timestamp: new Date().toISOString() })
-      })
-      .then(() => {
-        logScan(data);
-        saveScanToLocalStorage(data);
-        document.getElementById('scan-result').textContent = `✅ Scanned: ${data}`;
-      })
-      .catch(() => alert('⚠️ Network error. Check script deployment and permissions.'));
+function sendToGoogleSheet(data) {
+  fetch('https://script.google.com/macros/s/AKfycb.../exec', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ code: data, timestamp: new Date().toISOString() })
+  })
+  .then(response => response.json())
+  .then(result => {
+    if (result.status === 'duplicate') {
+      document.getElementById('scan-result').textContent = '⚠️ Already scanned (server)';
+      document.getElementById('scan-result').style.color = '#f00';
+    } else {
+      logScan(data);
+      saveScanToLocalStorage(data);
+      document.getElementById('scan-result').textContent = `✅ Scanned: ${data}`;
+      document.getElementById('scan-result').style.color = '#0f0';
     }
+  })
+  .catch(() => alert('⚠️ Network error. Check script deployment and permissions.'));
+}
 
     function onScanSuccess(qrMessage) {
   if (scannedSet.has(qrMessage)) {
