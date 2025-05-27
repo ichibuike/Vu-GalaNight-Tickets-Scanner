@@ -2,13 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Concert Ticket QR Scanner</title>
+  
+  <!-- QR Scanner -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 
+    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyDeeUgQQsHJLB0JTq8RHwlMPz2lSNl9T8k",
       authDomain: "qr-scanner-app-e3d83.firebaseapp.com",
@@ -21,100 +27,113 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
+    const analytics = getAnalytics(app);
 
-    let scannedSet = new Set(JSON.parse(localStorage.getItem('scannedCodes') || '[]'));
+    const scannedSet = new Set(JSON.parse(localStorage.getItem('scannedCodes')) || []);
     const scanLog = document.querySelector('#scan-log tbody');
     let counter = 1;
 
-    function logScan(ticket) {
+    function logScan(data, timeLabel = new Date().toLocaleString()) {
       const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${counter++}</td>
-        <td>${ticket.name}</td>
-        <td>${ticket.contact}</td>
-        <td>${ticket.seat}</td>
-        <td>${ticket.table}</td>
-        <td>${new Date(ticket.timestamp).toLocaleString()}</td>
-      `;
+      row.innerHTML = `<td>${counter++}</td><td>${data}</td><td>${timeLabel}</td>`;
       scanLog.appendChild(row);
     }
 
-    async function sendToFirestore(ticket) {
-      // Check if ticket is already scanned in Firestore
-      const q = query(collection(db, "scans"), where("code", "==", ticket.raw));
-      const snap = await getDocs(q);
-
-      if (!snap.empty) {
-        alert("⚠️ This ticket has already been scanned!");
-        return;
-      }
-
-      await addDoc(collection(db, "scans"), ticket);
-      scannedSet.add(ticket.raw);
+    function saveScanToLocalStorage(data) {
+      scannedSet.add(data);
       localStorage.setItem('scannedCodes', JSON.stringify([...scannedSet]));
-      logScan(ticket);
-      document.getElementById('scan-result').textContent = `✅ Scanned: ${ticket.name}`;
     }
 
-    function parseQRCodeData(qrMessage) {
-      const parts = qrMessage.split("|");
-      if (parts.length !== 4) return null;
-      return {
-        raw: qrMessage,
-        name: parts[0],
-        contact: parts[1],
-        seat: parts[2],
-        table: parts[3],
-        timestamp: new Date().toISOString()
-      };
+    async function sendToFirebase(data) {
+      const codeRef = doc(db, "scans", data);
+
+      try {
+        const docSnap = await getDoc(codeRef);
+        if (docSnap.exists()) {
+          document.getElementById("scan-result").textContent = "⚠️ Already scanned (server)";
+          document.getElementById("scan-result").style.color = "#f00";
+          return;
+        }
+
+        await setDoc(codeRef, {
+          code: data,
+          timestamp: new Date().toISOString()
+        });
+
+        logScan(data);
+        saveScanToLocalStorage(data);
+        document.getElementById("scan-result").textContent = `✅ Scanned: ${data}`;
+        document.getElementById("scan-result").style.color = "#0f0";
+
+      } catch (error) {
+        console.error("Firebase error:", error);
+        alert("⚠️ Error saving to Firebase");
+      }
     }
 
-    async function onScanSuccess(qrMessage) {
-      if (scannedSet.has(qrMessage)) {
-        alert("⚠️ Already scanned on this device!");
-        return;
+    window.onload = () => {
+      const html5QrCode = new Html5Qrcode("reader");
+
+      function onScanSuccess(qrMessage) {
+        if (scannedSet.has(qrMessage)) {
+          alert('⚠️ This code has already been scanned on this device!');
+          return;
+        }
+
+        html5QrCode.stop().then(() => {
+          sendToFirebase(qrMessage);
+          setTimeout(() => {
+            html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: 250 },
+              onScanSuccess
+            );
+          }, 2000);
+        });
       }
 
-      const ticket = parseQRCodeData(qrMessage);
-      if (!ticket) {
-        alert("⚠️ Invalid QR format!");
-        return;
-      }
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+          html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: 250 },
+            onScanSuccess
+          );
+        }
+      });
 
-      await html5QrCode.stop();
-      await sendToFirestore(ticket);
-      setTimeout(() => {
-        html5QrCode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
-          onScanSuccess
-        );
-      }, 1500);
-    }
-
-    const html5QrCode = new Html5Qrcode("reader");
-    Html5Qrcode.getCameras().then(devices => {
-      if (devices.length) {
-        html5QrCode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
-          onScanSuccess
-        );
-      }
-    });
-
-    // Reload local history on load
-    JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach(code => {
-      const ticket = parseQRCodeData(code);
-      if (ticket) logScan(ticket);
-    });
+      // Load local scan history
+      JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach((entry, index) => {
+        logScan(entry, "Previously Scanned");
+        counter = index + 2;
+      });
+    };
 
     window.clearHistory = () => {
       localStorage.removeItem('scannedCodes');
       scannedSet.clear();
-      scanLog.innerHTML = "";
+      document.querySelector('#scan-log tbody').innerHTML = "";
       counter = 1;
-      alert("🗑️ Local history cleared.");
+      alert("🗑️ Local scan history cleared.");
+    };
+
+    window.downloadCSV = () => {
+      const rows = [["#", "Data", "Timestamp"]];
+      const tableRows = document.querySelectorAll("#scan-log tbody tr");
+      tableRows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        const rowData = Array.from(cells).map(cell => cell.textContent);
+        rows.push(rowData);
+      });
+
+      let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "scan_log.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     };
   </script>
 
@@ -123,55 +142,68 @@
       font-family: 'Segoe UI', sans-serif;
       background: linear-gradient(to right, #1e1e2f, #3c3c58);
       padding: 20px;
-      color: #fff;
       text-align: center;
+      color: #fff;
     }
     .scanner-container {
-      max-width: 700px;
+      max-width: 600px;
       margin: auto;
       background: #fff;
       color: #111;
       padding: 20px;
       border-radius: 10px;
       border: 2px dashed #111;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
     }
     h2 {
       font-size: 22px;
-      margin-bottom: 15px;
+      font-weight: bold;
       text-transform: uppercase;
+      margin-bottom: 15px;
     }
     table {
       width: 100%;
       margin-top: 20px;
       border-collapse: collapse;
+      background-color: #fff;
     }
     th, td {
       border: 1px solid #ccc;
       padding: 10px;
       text-align: left;
+      font-family: 'Courier New', Courier, monospace;
     }
     th {
-      background-color: #eee;
+      background-color: #e5e7eb;
     }
     #scan-result {
-      margin-top: 10px;
       font-weight: bold;
-      color: green;
+      margin-top: 10px;
+      color: #0f0;
     }
     .actions {
       margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     .actions button {
       padding: 10px 15px;
-      background: #111;
-      color: white;
       border: none;
+      background-color: #111;
+      color: #fff;
       border-radius: 5px;
       cursor: pointer;
-      margin: 5px;
+    }
+    @media (min-width: 600px) {
+      .actions {
+        flex-direction: row;
+        justify-content: center;
+      }
     }
     #reader {
-      max-width: 300px;
+      width: 100% !important;
+      max-width: 320px;
       margin: auto;
     }
   </style>
@@ -183,12 +215,13 @@
     <p id="scan-result"></p>
 
     <div class="actions">
-      <button onclick="clearHistory()">🗑️ Clear Local History</button>
+      <button onclick="clearHistory()">Clear History</button>
+      <button onclick="downloadCSV()">Download CSV</button>
     </div>
 
     <table id="scan-log">
       <thead>
-        <tr><th>#</th><th>Name</th><th>Contact</th><th>Seat</th><th>Table</th><th>Timestamp</th></tr>
+        <tr><th>#</th><th>Data</th><th>Timestamp</th></tr>
       </thead>
       <tbody></tbody>
     </table>
