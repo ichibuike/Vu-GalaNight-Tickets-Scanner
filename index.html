@@ -112,27 +112,32 @@
     }
 
 function sendToGoogleSheet(data) {
-  fetch('https://script.google.com/macros/s/AKfycbzyZDFXWd8H_wsUk_7MbAyq5NiGaCSygSlQvxIGiBnnPPRAi0Meveb_E48arikwMvoNXA/exec', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ code: data, timestamp: new Date().toISOString() })
+  fetch("https://script.google.com/macros/s/AKfycbzREe_qfe_0gNoOuYpHZtsAkBz2HLnNM8D14oCFBJ8dr4A6ru5yO10I0E3tTpBNOUhDiA/exec", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: data,
+      timestamp: new Date().toISOString()
+    })
   })
-  .then(response => response.json())
-  .then(result => {
-    if (result.status === 'duplicate') {
-      document.getElementById('scan-result').textContent = '⚠️ Already scanned (server)';
-      document.getElementById('scan-result').style.color = '#f00';
-    } else {
-      logScan(data);
-      saveScanToLocalStorage(data);
-      document.getElementById('scan-result').textContent = `✅ Scanned: ${data}`;
-      document.getElementById('scan-result').style.color = '#0f0';
-    }
-  })
-  .catch(() => alert('⚠️ Network error. Check script deployment and permissions.'));
+    .then((res) => res.json())
+    .then((result) => {
+      if (result.status === "duplicate") {
+        document.getElementById("scan-result").textContent = "⚠️ Already scanned (server)";
+        document.getElementById("scan-result").style.color = "#f00";
+      } else {
+        logScan(data);
+        saveScanToLocalStorage(data);
+        document.getElementById("scan-result").textContent = `✅ Scanned: ${data}`;
+        document.getElementById("scan-result").style.color = "#0f0";
+      }
+    })
+    .catch((err) => {
+      alert("⚠️ Network error. Check script deployment and permissions.");
+      console.error(err);
+    });
 }
+
 
     function onScanSuccess(qrMessage) {
   if (scannedSet.has(qrMessage)) {
