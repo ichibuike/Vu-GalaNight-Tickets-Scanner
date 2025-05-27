@@ -4,7 +4,139 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Concert Ticket QR Scanner</title>
+  
+  <!-- QR Scanner -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+
+    // Your Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDeeUgQQsHJLB0JTq8RHwlMPz2lSNl9T8k",
+      authDomain: "qr-scanner-app-e3d83.firebaseapp.com",
+      projectId: "qr-scanner-app-e3d83",
+      storageBucket: "qr-scanner-app-e3d83.appspot.com",
+      messagingSenderId: "976726923438",
+      appId: "1:976726923438:web:0323093c6f8028afb9753f",
+      measurementId: "G-PDP8G7QL71"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const analytics = getAnalytics(app);
+
+    const scannedSet = new Set(JSON.parse(localStorage.getItem('scannedCodes')) || []);
+    const scanLog = document.querySelector('#scan-log tbody');
+    let counter = 1;
+
+    function logScan(data, timeLabel = new Date().toLocaleString()) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${counter++}</td><td>${data}</td><td>${timeLabel}</td>`;
+      scanLog.appendChild(row);
+    }
+
+    function saveScanToLocalStorage(data) {
+      scannedSet.add(data);
+      localStorage.setItem('scannedCodes', JSON.stringify([...scannedSet]));
+    }
+
+    async function sendToFirebase(data) {
+      const codeRef = doc(db, "scans", data);
+
+      try {
+        const docSnap = await getDoc(codeRef);
+        if (docSnap.exists()) {
+          document.getElementById("scan-result").textContent = "⚠️ Already scanned (server)";
+          document.getElementById("scan-result").style.color = "#f00";
+          return;
+        }
+
+        await setDoc(codeRef, {
+          code: data,
+          timestamp: new Date().toISOString()
+        });
+
+        logScan(data);
+        saveScanToLocalStorage(data);
+        document.getElementById("scan-result").textContent = `✅ Scanned: ${data}`;
+        document.getElementById("scan-result").style.color = "#0f0";
+
+      } catch (error) {
+        console.error("Firebase error:", error);
+        alert("⚠️ Error saving to Firebase");
+      }
+    }
+
+    window.onload = () => {
+      const html5QrCode = new Html5Qrcode("reader");
+
+      function onScanSuccess(qrMessage) {
+        if (scannedSet.has(qrMessage)) {
+          alert('⚠️ This code has already been scanned on this device!');
+          return;
+        }
+
+        html5QrCode.stop().then(() => {
+          sendToFirebase(qrMessage);
+          setTimeout(() => {
+            html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: 250 },
+              onScanSuccess
+            );
+          }, 2000);
+        });
+      }
+
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+          html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: 250 },
+            onScanSuccess
+          );
+        }
+      });
+
+      // Load local scan history
+      JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach((entry, index) => {
+        logScan(entry, "Previously Scanned");
+        counter = index + 2;
+      });
+    };
+
+    window.clearHistory = () => {
+      localStorage.removeItem('scannedCodes');
+      scannedSet.clear();
+      document.querySelector('#scan-log tbody').innerHTML = "";
+      counter = 1;
+      alert("🗑️ Local scan history cleared.");
+    };
+
+    window.downloadCSV = () => {
+      const rows = [["#", "Data", "Timestamp"]];
+      const tableRows = document.querySelectorAll("#scan-log tbody tr");
+      tableRows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        const rowData = Array.from(cells).map(cell => cell.textContent);
+        rows.push(rowData);
+      });
+
+      let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "scan_log.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+  </script>
+
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -71,7 +203,7 @@
     }
     #reader {
       width: 100% !important;
-      max-width: 300px;
+      max-width: 320px;
       margin: auto;
     }
   </style>
@@ -94,116 +226,5 @@
       <tbody></tbody>
     </table>
   </div>
-
-  <script>
-    let scannedSet = new Set(JSON.parse(localStorage.getItem('scannedCodes')) || []);
-    const scanLog = document.querySelector('#scan-log tbody');
-    let counter = 1;
-
-    function logScan(data, timeLabel = new Date().toLocaleString()) {
-      const row = document.createElement('tr');
-      row.innerHTML = `<td>${counter++}</td><td>${data}</td><td>${timeLabel}</td>`;
-      scanLog.appendChild(row);
-    }
-
-    function saveScanToLocalStorage(data) {
-      scannedSet.add(data);
-      localStorage.setItem('scannedCodes', JSON.stringify([...scannedSet]));
-    }
-
-function sendToGoogleSheet(data) {
-  fetch("https://script.google.com/macros/s/AKfycbzREe_qfe_0gNoOuYpHZtsAkBz2HLnNM8D14oCFBJ8dr4A6ru5yO10I0E3tTpBNOUhDiA/exec", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: data,
-      timestamp: new Date().toISOString()
-    })
-  })
-    .then((res) => res.json())
-    .then((result) => {
-      if (result.status === "duplicate") {
-        document.getElementById("scan-result").textContent = "⚠️ Already scanned (server)";
-        document.getElementById("scan-result").style.color = "#f00";
-      } else {
-        logScan(data);
-        saveScanToLocalStorage(data);
-        document.getElementById("scan-result").textContent = `✅ Scanned: ${data}`;
-        document.getElementById("scan-result").style.color = "#0f0";
-      }
-    })
-    .catch((err) => {
-      alert("⚠️ Network error. Check script deployment and permissions.");
-      console.error(err);
-    });
-}
-
-
-    function onScanSuccess(qrMessage) {
-  if (scannedSet.has(qrMessage)) {
-    alert('⚠️ This code has already been scanned on this device!');
-    return;
-  }
-
-  // Immediately pause scanning
-  html5QrCode.stop().then(() => {
-    sendToGoogleSheet(qrMessage);
-
-    // Restart scanning after 2 seconds
-    setTimeout(() => {
-      html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        onScanSuccess
-      );
-    }, 2000);
-  }).catch(err => console.error('Error stopping scanner:', err));
-}
-
-
-    const html5QrCode = new Html5Qrcode("reader");
-    Html5Qrcode.getCameras().then(devices => {
-      if (devices && devices.length) {
-        html5QrCode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: 250 },
-          onScanSuccess
-        );
-      }
-    });
-
-    // Reload scanned entries
-    JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach((entry, index) => {
-      logScan(entry, "Previously Scanned");
-      counter = index + 2;
-    });
-
-    function clearHistory() {
-      localStorage.removeItem('scannedCodes');
-      scannedSet.clear();
-      scanLog.innerHTML = "";
-      counter = 1;
-      alert("🗑️ Local scan history cleared.");
-    }
-
-    function downloadCSV() {
-      const rows = [["#", "Data", "Timestamp"]];
-      const tableRows = scanLog.querySelectorAll("tr");
-      tableRows.forEach(row => {
-        const cells = row.querySelectorAll("td");
-        const rowData = Array.from(cells).map(cell => cell.textContent);
-        rows.push(rowData);
-      });
-
-      let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "scan_log.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  </script>
 </body>
 </html>
