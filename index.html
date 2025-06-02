@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Concert Ticket QR Scanner</title>
-  
+
   <!-- QR Scanner -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
@@ -14,7 +14,6 @@
     import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 
-    // Your Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyDeeUgQQsHJLB0JTq8RHwlMPz2lSNl9T8k",
       authDomain: "qr-scanner-app-e3d83.firebaseapp.com",
@@ -46,7 +45,6 @@
 
     async function sendToFirebase(data) {
       const codeRef = doc(db, "scans", data);
-
       try {
         const docSnap = await getDoc(codeRef);
         if (docSnap.exists()) {
@@ -102,7 +100,6 @@
         }
       });
 
-      // Load local scan history
       JSON.parse(localStorage.getItem('scannedCodes') || "[]").forEach((entry, index) => {
         logScan(entry, "Previously Scanned");
         counter = index + 2;
@@ -116,25 +113,6 @@
       counter = 1;
       alert("🗑️ Local scan history cleared.");
     };
-
-    window.downloadCSV = () => {
-      const rows = [["#", "Data", "Timestamp"]];
-      const tableRows = document.querySelectorAll("#scan-log tbody tr");
-      tableRows.forEach(row => {
-        const cells = row.querySelectorAll("td");
-        const rowData = Array.from(cells).map(cell => cell.textContent);
-        rows.push(rowData);
-      });
-
-      let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "scan_log.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
   </script>
 
   <style>
@@ -145,6 +123,7 @@
       text-align: center;
       color: #fff;
     }
+
     .scanner-container {
       max-width: 600px;
       margin: auto;
@@ -155,38 +134,45 @@
       border: 2px dashed #111;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
     }
+
     h2 {
       font-size: 22px;
       font-weight: bold;
       text-transform: uppercase;
       margin-bottom: 15px;
     }
+
     table {
       width: 100%;
       margin-top: 20px;
       border-collapse: collapse;
       background-color: #fff;
     }
+
     th, td {
       border: 1px solid #ccc;
       padding: 10px;
       text-align: left;
       font-family: 'Courier New', Courier, monospace;
     }
+
     th {
       background-color: #e5e7eb;
     }
+
     #scan-result {
       font-weight: bold;
       margin-top: 10px;
       color: #0f0;
     }
+
     .actions {
       margin-top: 20px;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
+
     .actions button {
       padding: 10px 15px;
       border: none;
@@ -195,16 +181,25 @@
       border-radius: 5px;
       cursor: pointer;
     }
+
     @media (min-width: 600px) {
       .actions {
         flex-direction: row;
         justify-content: center;
       }
     }
+
     #reader {
       width: 100% !important;
       max-width: 320px;
       margin: auto;
+    }
+
+    footer {
+      margin-top: 30px;
+      text-align: center;
+      font-size: 14px;
+      color: #ccc;
     }
   </style>
 </head>
@@ -216,7 +211,6 @@
 
     <div class="actions">
       <button onclick="clearHistory()">Clear History</button>
-      <button onclick="downloadCSV()">Download CSV</button>
     </div>
 
     <table id="scan-log">
@@ -226,5 +220,9 @@
       <tbody></tbody>
     </table>
   </div>
+
+  <footer>
+    Made and Designed By <strong>Iayuba_Softwares</strong>
+  </footer>
 </body>
 </html>
